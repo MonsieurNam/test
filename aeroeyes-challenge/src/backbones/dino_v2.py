@@ -39,9 +39,11 @@ class DINOv2Encoder:
         # Áp dụng transform và chuyển thành batch
         t_images = torch.stack([self.transform(img) for img in images]).to(self.device)
         
-        # Lấy đặc trưng và chỉ giữ lại [CLS] token (token đầu tiên)
-        features = self.model(t_images)
-        cls_embedding = features[:, 0, :]
+        # --- SỬA LỖI ---
+        # model(t_images) đã trả về embedding [CLS] có shape (batch_size, feature_dim)
+        cls_embedding = self.model(t_images)
+        # Bỏ đi dòng features[:, 0, :]
+        
         return cls_embedding.cpu()
 
     @torch.no_grad()
@@ -59,8 +61,10 @@ class DINOv2Encoder:
         # Sử dụng get_intermediate_layers để lấy patch tokens
         # c_l_s = class token, p_t_s = patch tokens
         # vitl14 có 1024 chiều đặc trưng
-        features_dict = self.model.get_intermediate_layers(t_images, n=1, return_class_token=True)
-        c_l_s, p_t_s = features_dict[0]
+        # Chuyển n=1 thành n=11 (hoặc một layer cuối) để lấy đặc trưng sâu hơn. Layer cuối là 11 cho ViT-L.
+        features_dict = self.model.get_intermediate_layers(t_images, n=11, return_class_token=True)
+        # Lấy output của layer cuối cùng
+        c_l_s, p_t_s = features_dict[-1]
 
         # Reshape patch tokens thành bản đồ 2D
         # Kích thước patch của DINOv2 là 14x14, ảnh input là 518x518 -> 37x37 patches
