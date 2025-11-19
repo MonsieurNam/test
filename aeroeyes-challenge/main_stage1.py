@@ -31,13 +31,15 @@ def main(video_id: str):
     spatial_localizer = SpatialLocalizer(dino_encoder, config)
 
     # --- 3. RUN STAGE 1 PIPELINES ---
-    trois, frames, query_vector = temporal_filter.find_regions_of_interest(video_path, ref_images_pil)
+    # Thay đổi: Không còn nhận lại list frames
+    trois, query_vector = temporal_filter.find_regions_of_interest(video_path, ref_images_pil)
     
     if not trois:
         print("No objects to localize. Exiting.")
         return
 
-    candidate_boxes = spatial_localizer.find_candidates_in_regions(frames, query_vector, trois)
+    # Thay đổi: Truyền video_path thay vì list frames
+    candidate_boxes = spatial_localizer.find_candidates_in_regions(video_path, query_vector, trois)
 
     # --- 4. VISUALIZATION ---
     print(f"\nVisualizing results and saving to {output_video_path}...")
