@@ -1,7 +1,14 @@
 # src/pipelines/temporal_filter.py
 
-# ... (imports) ...
-from src.utils.video import frame_generator # Thay đổi import
+import torch.nn.functional as F
+from scipy.ndimage import gaussian_filter1d
+from scipy.signal import find_peaks
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
+
+from src.utils.video import read_video_as_pil_images
+from src.backbones.dino_v2 import DINOv2Encoder
 
 class TemporalFilter:
     def __init__(self, dino_encoder: DINOv2Encoder, config):
@@ -9,8 +16,10 @@ class TemporalFilter:
         self.config = config
 
     def _compute_query_vector(self, ref_images_pil):
-        # ... (giữ nguyên) ...
-        pass
+        """Tính vector truy vấn từ ảnh tham chiếu."""
+        ref_embeddings = self.encoder.get_cls_embedding(ref_images_pil)
+        query_vector = F.normalize(ref_embeddings.mean(dim=0), p=2, dim=0)
+        return query_vector.unsqueeze(0) # Thêm chiều batch
 
     def find_regions_of_interest(self, video_path: str, ref_images_pil: list):
         print("Stage 1.1: Temporal Filtering (Streaming Mode)...")
@@ -55,20 +64,22 @@ class TemporalFilter:
                 
                 frame_idx += 1
 
-        # ... (Phần xử lý lọc và tìm đỉnh giữ nguyên) ...
+        # 3. Lọc và tìm đỉnh
         smoothed_scores = gaussian_filter1d(similarity_scores, sigma=self.config.SIGNAL_SMOOTHING_SIGMA)
         peaks, _ = find_peaks(smoothed_scores, prominence=self.config.PEAK_PROMINENCE)
 
         if len(peaks) == 0:
-            print("No significant peaks found.")
-            return [], None # Thay đổi: không trả về list frames nữa
+            print("No significant peaks found. The object might not be in the video.")
+            return []
 
+        # 4. Tạo các Vùng Thời gian Quan tâm (TRoI)
         trois = []
         for peak in peaks:
             start_frame = max(0, peak - self.config.ROI_WINDOW_FRAMES)
             end_frame = min(num_frames - 1, peak + self.config.ROI_WINDOW_FRAMES)
             trois.append((start_frame, end_frame))
         
+        # Gộp các vùng bị chồng lấn
+        # (Bạn có thể thêm logic gộp phức tạp hơn nếu cần)
         print(f"Found {len(trois)} Temporal Region(s) of Interest.")
-        # Thay đổi: Không trả về list frames khổng lồ nữa
-        return trois, query_vector
+        return trois, frames, query_vector
