@@ -1,13 +1,15 @@
 # src/pipelines/temporal_filter.py
 
+import torch
 import torch.nn.functional as F
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+import cv2 # Thêm import cv2 để lấy num_frames
 
-from src.utils.video import read_video_as_pil_images
+from src.utils.video import frame_generator
 from src.backbones.dino_v2 import DINOv2Encoder
 
 class TemporalFilter:
@@ -22,6 +24,9 @@ class TemporalFilter:
         return query_vector.unsqueeze(0) # Thêm chiều batch
 
     def find_regions_of_interest(self, video_path: str, ref_images_pil: list):
+        """
+        Chạy toàn bộ pipeline lọc thời gian để tìm ra các TRoI.
+        """
         print("Stage 1.1: Temporal Filtering (Streaming Mode)...")
         
         query_vector = self._compute_query_vector(ref_images_pil)
@@ -31,10 +36,12 @@ class TemporalFilter:
         num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         cap.release()
 
+        if num_frames == 0:
+            print("Warning: Video has no frames or could not be read.")
+            return [], query_vector
+
         similarity_scores = np.zeros(num_frames)
         
-        # --- THAY ĐỔI CỐT LÕI ---
-        # Sử dụng generator thay vì đọc hết video
         video_gen = frame_generator(video_path)
         
         batch_frames = []
@@ -44,7 +51,6 @@ class TemporalFilter:
             for frame_pil in video_gen:
                 batch_frames.append(frame_pil)
                 
-                # Khi đủ batch hoặc hết video, xử lý batch
                 if len(batch_frames) == self.config.TEMPORAL_BATCH_SIZE or frame_idx == num_frames - 1:
                     if not batch_frames:
                         break
@@ -54,32 +60,32 @@ class TemporalFilter:
                     
                     scores = F.cosine_similarity(query_vector, frame_embeddings)
                     
-                    # Cập nhật điểm vào mảng lớn
                     start_idx = frame_idx - len(batch_frames) + 1
                     end_idx = frame_idx + 1
                     similarity_scores[start_idx:end_idx] = scores.numpy()
                     
                     pbar.update(len(batch_frames))
-                    batch_frames = [] # Reset batch
+                    batch_frames = []
                 
                 frame_idx += 1
 
-        # 3. Lọc và tìm đỉnh
         smoothed_scores = gaussian_filter1d(similarity_scores, sigma=self.config.SIGNAL_SMOOTHING_SIGMA)
         peaks, _ = find_peaks(smoothed_scores, prominence=self.config.PEAK_PROMINENCE)
 
         if len(peaks) == 0:
-            print("No significant peaks found. The object might not be in the video.")
-            return []
+            print("No significant peaks found.")
+            # --- SỬA LỖI ---
+            # Trả về một tuple rỗng và query_vector để đảm bảo nhất quán
+            return [], query_vector 
 
-        # 4. Tạo các Vùng Thời gian Quan tâm (TRoI)
         trois = []
         for peak in peaks:
             start_frame = max(0, peak - self.config.ROI_WINDOW_FRAMES)
             end_frame = min(num_frames - 1, peak + self.config.ROI_WINDOW_FRAMES)
             trois.append((start_frame, end_frame))
         
-        # Gộp các vùng bị chồng lấn
-        # (Bạn có thể thêm logic gộp phức tạp hơn nếu cần)
+        # (Tùy chọn) Thêm logic gộp các TRoI bị chồng lấn nếu cần
+        
         print(f"Found {len(trois)} Temporal Region(s) of Interest.")
-        return trois, frames, query_vector
+        
+        return trois, query_vector

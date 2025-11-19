@@ -16,7 +16,6 @@ def main(video_id: str):
     video_path = os.path.join(config.DATASET_DIR, video_id, "drone_video.mp4")
     ref_images_dir = os.path.join(config.DATASET_DIR, video_id, "object_images")
     
-    # Tạo thư mục output
     output_video_path = os.path.join(config.OUTPUT_DIR, f"{video_id}_stage1_output.mp4")
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     
@@ -31,14 +30,15 @@ def main(video_id: str):
     spatial_localizer = SpatialLocalizer(dino_encoder, config)
 
     # --- 3. RUN STAGE 1 PIPELINES ---
-    # Thay đổi: Không còn nhận lại list frames
+    # --- SỬA LỖI ---
+    # Đảm bảo chỉ nhận 2 giá trị trả về: trois và query_vector
     trois, query_vector = temporal_filter.find_regions_of_interest(video_path, ref_images_pil)
     
     if not trois:
         print("No objects to localize. Exiting.")
         return
 
-    # Thay đổi: Truyền video_path thay vì list frames
+    # Truyền video_path thay vì list frames
     candidate_boxes = spatial_localizer.find_candidates_in_regions(video_path, query_vector, trois)
 
     # --- 4. VISUALIZATION ---
@@ -57,7 +57,6 @@ def main(video_id: str):
         if not ret:
             break
         
-        # Vẽ bounding box nếu có
         if frame_idx in candidate_boxes:
             frame = draw_boxes_on_frame(frame, candidate_boxes[frame_idx], color=(0, 255, 0), thickness=2)
 
@@ -70,6 +69,5 @@ def main(video_id: str):
 
 
 if __name__ == '__main__':
-    # Thay đổi video_id để chạy với các video khác nhau
     target_video_id = "Jacket_0" 
     main(target_video_id)
