@@ -7,7 +7,7 @@ import cv2
 from PIL import Image
 from tqdm import tqdm
 from typing import List, Dict, Tuple
-
+import cv2
 from src.backbones.dino_v2 import DINOv2Encoder
 
 class SpatialLocalizer:
