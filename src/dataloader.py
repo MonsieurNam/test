@@ -52,51 +52,52 @@ class AeroEyesDataset:
         }
 
     def visualize_sample(self, idx):
-        """
-        Hàm debug: Hiển thị 3 ảnh tham chiếu và frame đầu tiên của video
-        """
         sample = self.get_sample(idx)
         print(f"--- Visualizing: {sample['video_id']} ---")
         
         # Load 3 ảnh tham chiếu
         ref_imgs = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB) for p in sample['ref_images_paths']]
         
-        # Load frame đầu tiên của video
+        # Load video
         cap = cv2.VideoCapture(sample['video_path'])
+        
+        # --- CHỈNH SỬA Ở ĐÂY: Chúng ta sẽ nhảy đến frame có chứa vật thể đầu tiên ---
+        start_frame = 0
+        if sample['ground_truth']:
+            # Lấy frame đầu tiên mà vật thể xuất hiện trong annotation
+            start_frame = sample['ground_truth'][0]['bboxes'][0]['frame']
+            
+        # Set video đến đúng frame đó
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ret, frame = cap.read()
         cap.release()
+        
         if ret:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         else:
             print("Lỗi: Không đọc được video.")
             return
 
-        # Vẽ Ground Truth lên frame (nếu có) - Lấy GT ở frame đầu tiên tìm thấy
-        gt_bboxes = []
+        # Vẽ Ground Truth (CHỈ VẼ BBOX CỦA FRAME HIỆN TẠI)
         if sample['ground_truth']:
-            # Tìm annotation đầu tiên có dữ liệu
-            first_annot = sample['ground_truth'][0] 
-            if 'bboxes' in first_annot:
-                for bbox in first_annot['bboxes']:
-                    # Chỉ vẽ nếu frame trùng khớp (để demo thì vẽ đại diện)
-                    # Ở đây vẽ ví dụ frame bất kỳ trong GT để check tọa độ
-                    x1, y1, x2, y2 = bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2']
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 3)
-                    cv2.putText(frame, f"Frame: {bbox['frame']}", (x1, y1-10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
+            for annot in sample['ground_truth']:
+                for bbox in annot['bboxes']:
+                    # Chỉ vẽ nếu frame của bbox trùng với frame mình đang xem (start_frame)
+                    if bbox['frame'] == start_frame:
+                        x1, y1, x2, y2 = bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2']
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2) # Màu xanh lá
+                        cv2.putText(frame, f"GT Frame: {bbox['frame']}", (x1, y1-10), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
         # Plotting
         fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-        
-        # Hiển thị 3 ảnh object
         for i, img in enumerate(ref_imgs):
             axs[i].imshow(img)
-            axs[i].set_title(f"Ref Image {i+1}")
+            axs[i].set_title(f"Ref {i+1}")
             axs[i].axis('off')
             
-        # Hiển thị frame video
         axs[3].imshow(frame)
-        axs[3].set_title(f"Video Frame (w/ GT sample)")
+        axs[3].set_title(f"Video at Frame {start_frame}")
         axs[3].axis('off')
         
         plt.show()
